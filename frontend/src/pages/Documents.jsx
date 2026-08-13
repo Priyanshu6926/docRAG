@@ -9,8 +9,6 @@ import {
   AlertTriangle,
   Loader2,
   PlusCircle,
-  FileCheck,
-  Sparkles,
   BookOpen
 } from 'lucide-react';
 import apiClient from '../api/client';
@@ -29,7 +27,7 @@ export default function Documents() {
     try {
       const response = await apiClient.get('/documents');
       setDocuments(response.data);
-    } catch (err) {
+    } catch {
       setError('Failed to load document list.');
     } finally {
       setLoading(false);
@@ -119,6 +117,12 @@ export default function Documents() {
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 space-y-10">
+        {error && (
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="text-slate-400 hover:text-white font-bold">✕</button>
+          </div>
+        )}
         
         {/* Upload Section */}
         <section>

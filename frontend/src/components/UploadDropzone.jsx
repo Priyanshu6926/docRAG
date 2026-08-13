@@ -1,12 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, AlertCircle, Loader2, CheckCircle2, Shield } from 'lucide-react';
+import { UploadCloud, AlertCircle, Loader2, CheckCircle2, Shield } from 'lucide-react';
 import apiClient from '../api/client';
 
 export default function UploadDropzone({ onUploadSuccess }) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
   const fileInputRef = useRef(null);
 
   const handleDragOver = (e) => {
@@ -35,7 +34,6 @@ export default function UploadDropzone({ onUploadSuccess }) {
 
   const processFile = async (file) => {
     setError(null);
-    setSelectedFile(file);
 
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       setError('Only PDF documents are supported in DocTalk.');
@@ -59,7 +57,6 @@ export default function UploadDropzone({ onUploadSuccess }) {
       if (onUploadSuccess) {
         onUploadSuccess(response.data);
       }
-      setSelectedFile(null);
     } catch (err) {
       const msg = err.response?.data?.error || 'Failed to upload document. Please try again.';
       setError(msg);

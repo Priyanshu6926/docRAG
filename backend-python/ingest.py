@@ -1,5 +1,5 @@
 import os
-import pymupdf as fitz  # PyMuPDF
+import pymupdf
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -13,15 +13,36 @@ embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
 
+def resolve_file_path(file_path: str) -> str:
+    """Helper to locate PDF across Docker container volume mounts and local dev directories."""
+    if os.path.exists(file_path):
+        return file_path
+    
+    filename = os.path.basename(file_path)
+    candidates = [
+        os.path.join("/app/uploads", filename),
+        os.path.join("./uploads", filename),
+        os.path.join("../backend-node/uploads", filename),
+        os.path.join("../uploads", filename),
+        os.path.join(os.path.dirname(__file__), "uploads", filename),
+        os.path.join(os.path.dirname(__file__), "../backend-node/uploads", filename),
+    ]
+    for cand in candidates:
+        if os.path.exists(cand):
+            print(f"Resolved PDF file path from '{file_path}' -> '{cand}'")
+            return cand
+    return file_path
+
 def ingest_pdf(document_id: str, file_path: str, collection_name: str):
     """
     Parses PDF preserving page numbers, chunks text, generates embeddings,
     and stores in ChromaDB.
     """
-    if not os.path.exists(file_path):
+    target_path = resolve_file_path(file_path)
+    if not os.path.exists(target_path):
         raise FileNotFoundError(f"PDF file not found at path: {file_path}")
 
-    doc = fitz.open(file_path)
+    doc = pymupdf.open(target_path)
     page_count = doc.page_count
     total_text = ""
     pages_data = []

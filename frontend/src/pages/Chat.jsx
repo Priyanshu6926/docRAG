@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -33,7 +33,7 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const fetchChatAndDoc = async () => {
+  const fetchChatAndDoc = useCallback(async () => {
     try {
       const chatRes = await apiClient.get(`/chat/${documentId}`);
       setMessages(chatRes.data.messages || []);
@@ -41,17 +41,17 @@ export default function Chat() {
         fileName: chatRes.data.fileName,
         status: chatRes.data.status
       });
-    } catch (err) {
+    } catch {
       alert('Failed to load chat session.');
       navigate('/documents');
     } finally {
       setLoading(false);
     }
-  };
+  }, [documentId, navigate]);
 
   useEffect(() => {
     fetchChatAndDoc();
-  }, [documentId]);
+  }, [fetchChatAndDoc]);
 
   useEffect(() => {
     scrollToBottom();

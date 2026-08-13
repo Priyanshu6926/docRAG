@@ -71,13 +71,13 @@ def query_rag(collection_name: str, question: str, chat_history: list):
     )
 
     # 5. Call LLM (Gemini or Anthropic or Fallback)
-    answer_text = generate_llm_response(full_prompt)
+    answer_text = generate_llm_response(full_prompt, retrieved_docs, retrieved_metas)
 
     # 6. Parse citations
     citations = parse_citations(answer_text, page_snippets, retrieved_metas)
 
-    # Clean raw [Sources: ...] tag from displayed answer text if desired
-    cleaned_answer = re.sub(r"\[Sources:.*?\]", "", answer_text, flags=re.IGNORECASE).strip()
+    # Clean raw [Sources: ...] or [Source: ...] tag from displayed answer text
+    cleaned_answer = re.sub(r"\[Source[s]?:.*?\]", "", answer_text, flags=re.IGNORECASE).strip()
     if not cleaned_answer:
         cleaned_answer = answer_text.strip()
 
@@ -86,7 +86,7 @@ def query_rag(collection_name: str, question: str, chat_history: list):
         "citations": citations
     }
 
-def generate_llm_response(prompt: str) -> str:
+def generate_llm_response(prompt: str, retrieved_docs: list = None, retrieved_metas: list = None) -> str:
     gemini_key = os.getenv("GEMINI_API_KEY")
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 
@@ -94,7 +94,7 @@ def generate_llm_response(prompt: str) -> str:
         try:
             from google import genai
             client = genai.Client(api_key=gemini_key.strip())
-            # Try gemini-2.5-flash or fallback model
+            # Try gemini-2.5-flash or fallback models
             for model_name in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
                 try:
                     response = client.models.generate_content(
@@ -108,7 +108,7 @@ def generate_llm_response(prompt: str) -> str:
         except Exception as e:
             print(f"Gemini API execution error: {e}")
 
-    if anthropic_key and anthropic_key.strip():
+    if anthropic_key and anthropic_key.strip() and not anthropic_key.startswith("your_"):
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=anthropic_key.strip())
@@ -121,18 +121,27 @@ def generate_llm_response(prompt: str) -> str:
         except Exception as e:
             print(f"Anthropic API execution error: {e}")
 
-    # Fallback response engine if no API key is active/configured
+    # Dynamic fallback response engine using retrieved document passages
+    if retrieved_docs and retrieved_metas:
+        top_doc = retrieved_docs[0].strip()
+        top_page = retrieved_metas[0].get("page", 1)
+        cited_pages_str = ", ".join(f"Page {meta.get('page', 1)}" for meta in retrieved_metas[:2])
+        return (
+            f"Based on the provided document passages, here is the relevant excerpt:\n\n"
+            f"\"{top_doc[:300]}\"\n\n"
+            f"[Sources: {cited_pages_str}]"
+        )
+
     return (
-        "Based on the provided document passages, here is the information requested: "
-        "The document details key procedures and requirements on page 1.\n\n"
+        "Based on the provided document passages, key details were retrieved.\n\n"
         "[Sources: Page 1]"
     )
 
 def parse_citations(answer_text: str, page_snippets: dict, retrieved_metas: list) -> list:
     cited_pages = set()
 
-    # Search for explicit [Sources: Page X, Page Y] pattern
-    source_match = re.search(r"\[Sources:\s*(.*?)\]", answer_text, re.IGNORECASE)
+    # Search for explicit [Source: Page X] or [Sources: Page X, Page Y] pattern
+    source_match = re.search(r"\[Source[s]?:\s*(.*?)\]", answer_text, re.IGNORECASE)
     if source_match:
         pages_str = source_match.group(1)
         found_nums = re.findall(r"\b\d+\b", pages_str)

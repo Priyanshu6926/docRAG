@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
+import mongoose from 'mongoose';
 import Document from '../models/Document.js';
 import Chat from '../models/Chat.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -59,22 +60,21 @@ router.post('/upload', authMiddleware, (req, res) => {
       const filePath = path.resolve(req.file.path);
       const fileSize = req.file.size;
 
-      // Create document in DB with status "processing"
+      const docId = new mongoose.Types.ObjectId();
+      const collectionName = `doc_${docId.toString()}`;
+
+      // Create document in DB with status "processing" and exact collection name
       const doc = await Document.create({
+        _id: docId,
         userId: req.user._id,
         fileName,
         filePath,
         fileSize,
         status: 'processing',
-        chromaCollectionName: `doc_placeholder`
+        chromaCollectionName: collectionName
       });
 
-      // Update chromaCollectionName using doc._id
-      const collectionName = `doc_${doc._id.toString()}`;
-      doc.chromaCollectionName = collectionName;
-      await doc.save();
-
-      // Trigger ingestion asynchronously (or call Python backend)
+      // Trigger ingestion asynchronously
       triggerPythonIngestion(doc._id, filePath, collectionName);
 
       res.status(202).json({

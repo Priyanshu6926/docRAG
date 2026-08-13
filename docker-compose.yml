@@ -23,7 +23,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CHROMA_PERSIST_DIR=/app/chroma_db
     volumes:
-      - ./backend-python/uploads:/app/uploads
+      - shared-uploads:/app/uploads
       - chroma-data:/app/chroma_db
     networks:
       - doctalk-net
@@ -42,7 +42,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-doctalk_super_secret_jwt_key_2026}
       - PYTHON_SERVICE_URL=http://python-rag:8000
     volumes:
-      - ./backend-node/uploads:/app/uploads
+      - shared-uploads:/app/uploads
     depends_on:
       - mongodb
       - python-rag
@@ -69,3 +69,4 @@ networks:
 volumes:
   mongo-data:
   chroma-data:
+  shared-uploads:

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Mail, Lock, User, ArrowRight, Loader2, FileText, Sparkles, Database, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, User, ArrowRight, Loader2, FileText, Sparkles, Database } from 'lucide-react';
 import apiClient from '../api/client';
 
 export default function Login() {
