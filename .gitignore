@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+backend-node/node_modules/
+frontend/node_modules/
+backend-python/venv/
+backend-python/__pycache__/
+*.pyc
+
+# Environment & Secrets
+.env
+*.env.local
+
+# Database & Uploads
+chroma_db/
+backend-python/chroma_db/
+backend-python/uploads/
+backend-node/uploads/
+uploads/
+/tmp/
+
+# Build output
+dist/
+frontend/dist/
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/

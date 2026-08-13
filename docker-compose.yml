@@ -1,0 +1,71 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: doctalk-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - doctalk-net
+
+  python-rag:
+    build:
+      context: ./backend-python
+      dockerfile: Dockerfile
+    container_name: doctalk-python-rag
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CHROMA_PERSIST_DIR=/app/chroma_db
+    volumes:
+      - ./backend-python/uploads:/app/uploads
+      - chroma-data:/app/chroma_db
+    networks:
+      - doctalk-net
+
+  backend-node:
+    build:
+      context: ./backend-node
+      dockerfile: Dockerfile
+    container_name: doctalk-backend-node
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/doctalk
+      - JWT_SECRET=${JWT_SECRET:-doctalk_super_secret_jwt_key_2026}
+      - PYTHON_SERVICE_URL=http://python-rag:8000
+    volumes:
+      - ./backend-node/uploads:/app/uploads
+    depends_on:
+      - mongodb
+      - python-rag
+    networks:
+      - doctalk-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: doctalk-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend-node
+    networks:
+      - doctalk-net
+
+networks:
+  doctalk-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  chroma-data:
