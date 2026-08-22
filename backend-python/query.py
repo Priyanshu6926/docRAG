@@ -28,14 +28,34 @@ def query_rag(collection_name: str, question: str, chat_history: list):
         include=["documents", "metadatas", "distances"]
     )
 
-    retrieved_docs = results.get("documents", [[]])[0]
-    retrieved_metas = results.get("metadatas", [[]])[0]
+    all_docs = results.get("documents", [[]])[0]
+    all_metas = results.get("metadatas", [[]])[0]
+    all_distances = results.get("distances", [[]])[0]
 
-    if not retrieved_docs:
+    if not all_docs:
         return {
             "answer": "I couldn't find relevant information in this document.",
             "citations": []
         }
+
+    # Filter out weakly-relevant chunks. With cosine space, Chroma returns
+    # distance = 1 - cosine_similarity, so lower is better. A chunk with
+    # distance > 0.8 is essentially unrelated to the question and only
+    # adds noise to the prompt, which is a common cause of vague or
+    # off-topic RAG answers.
+    RELEVANCE_DISTANCE_THRESHOLD = 0.8
+    retrieved_docs, retrieved_metas = [], []
+    for doc_text, meta, dist in zip(all_docs, all_metas, all_distances):
+        if dist <= RELEVANCE_DISTANCE_THRESHOLD:
+            retrieved_docs.append(doc_text)
+            retrieved_metas.append(meta)
+
+    # If filtering removed everything, fall back to the single best match
+    # rather than returning nothing — better to try with the closest chunk
+    # than to give up outright.
+    if not retrieved_docs:
+        retrieved_docs = [all_docs[0]]
+        retrieved_metas = [all_metas[0]]
 
     # 2. Format context passages and build page mapping
     context_passages = []
@@ -86,16 +106,20 @@ def query_rag(collection_name: str, question: str, chat_history: list):
         "citations": citations
     }
 
+class LLMUnavailableError(Exception):
+    """Raised when no LLM provider could successfully generate a response."""
+    pass
+
 def generate_llm_response(prompt: str, retrieved_docs: list = None, retrieved_metas: list = None) -> str:
     gemini_key = os.getenv("GEMINI_API_KEY")
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    errors = []
 
-    if gemini_key and gemini_key.strip():
+    if gemini_key and gemini_key.strip() and not gemini_key.startswith("your_"):
         try:
             from google import genai
             client = genai.Client(api_key=gemini_key.strip())
-            # Try gemini-2.5-flash or fallback models
-            for model_name in ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]:
+            for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
                 try:
                     response = client.models.generate_content(
                         model=model_name,
@@ -104,9 +128,13 @@ def generate_llm_response(prompt: str, retrieved_docs: list = None, retrieved_me
                     if response and response.text:
                         return response.text.strip()
                 except Exception as m_err:
-                    print(f"Gemini model {model_name} failed, trying next: {m_err}")
+                    errors.append(f"Gemini/{model_name}: {m_err}")
+                    print(f"[LLM] Gemini model {model_name} failed: {m_err}")
         except Exception as e:
-            print(f"Gemini API execution error: {e}")
+            errors.append(f"Gemini client init: {e}")
+            print(f"[LLM] Gemini client initialization error: {e}")
+    else:
+        errors.append("Gemini: no valid GEMINI_API_KEY set")
 
     if anthropic_key and anthropic_key.strip() and not anthropic_key.startswith("your_"):
         try:
@@ -119,22 +147,19 @@ def generate_llm_response(prompt: str, retrieved_docs: list = None, retrieved_me
             )
             return message.content[0].text.strip()
         except Exception as e:
-            print(f"Anthropic API execution error: {e}")
+            errors.append(f"Anthropic: {e}")
+            print(f"[LLM] Anthropic API execution error: {e}")
+    else:
+        errors.append("Anthropic: no valid ANTHROPIC_API_KEY set")
 
-    # Dynamic fallback response engine using retrieved document passages
-    if retrieved_docs and retrieved_metas:
-        top_doc = retrieved_docs[0].strip()
-        top_page = retrieved_metas[0].get("page", 1)
-        cited_pages_str = ", ".join(f"Page {meta.get('page', 1)}" for meta in retrieved_metas[:2])
-        return (
-            f"Based on the provided document passages, here is the relevant excerpt:\n\n"
-            f"\"{top_doc[:300]}\"\n\n"
-            f"[Sources: {cited_pages_str}]"
-        )
-
-    return (
-        "Based on the provided document passages, key details were retrieved.\n\n"
-        "[Sources: Page 1]"
+    # Every provider failed — this is now LOUD, not silent.
+    # It bubbles up as a real 500 error with the actual reason, instead of
+    # quietly returning a fake "answer" made of raw chunk text.
+    error_summary = " | ".join(errors)
+    print(f"[LLM] All providers failed. Reasons: {error_summary}")
+    raise LLMUnavailableError(
+        f"No LLM provider is currently working. Check your API keys in .env. "
+        f"Details: {error_summary}"
     )
 
 def parse_citations(answer_text: str, page_snippets: dict, retrieved_metas: list) -> list:
